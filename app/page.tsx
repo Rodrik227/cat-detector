@@ -21,6 +21,14 @@ export default function MouseClickListener() {
   const videoWsRef = useRef<WebSocket | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  // Função para obter URL WebSocket dinâmica
+  const getWebSocketUrl = (path: string) => {
+    if (typeof window === 'undefined') return '';
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    return `${protocol}//${host}${path}`;
+  };
+
   // Função para tocar som 5 vezes
   const playClickSound = () => {
     if (!soundEnabled) return;
@@ -28,52 +36,48 @@ export default function MouseClickListener() {
     const playBeep = (beepNumber: number) => {
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       
-      // Som de beep personalizado
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
       
       oscillator.connect(gainNode);
       gainNode.connect(audioContext.destination);
       
-      // Configurar som (frequência de alerta)
       oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
       oscillator.type = 'sine';
       
-      // Envelope do som
       gainNode.gain.setValueAtTime(0, audioContext.currentTime);
       gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.01);
       gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
       
-      // Tocar som
       oscillator.start(audioContext.currentTime);
       oscillator.stop(audioContext.currentTime + 0.3);
     };
     
-    // Reproduzir 5 beeps com intervalo de 0.4 segundos
     for (let i = 0; i < 5; i++) {
       setTimeout(() => {
         playBeep(i + 1);
-      }, i * 400); // 400ms de intervalo entre cada beep
+      }, i * 400);
     }
   };
 
   useEffect(() => {
     // Conectar ao WebSocket de cliques
     const connectWebSocket = () => {
-      wsRef.current = new WebSocket('ws://localhost:3000/api/ws');
+      const wsUrl = getWebSocketUrl('/api/ws');
+      console.log('Conectando WebSocket cliques:', wsUrl);
+      
+      wsRef.current = new WebSocket(wsUrl);
 
       wsRef.current.onopen = () => {
         setIsConnected(true);
-        console.log('Conectado ao servidor WebSocket (cliques)');
+        console.log('✅ Conectado ao servidor WebSocket (cliques)');
       };
 
       wsRef.current.onmessage = (event) => {
         const data: ClickData = JSON.parse(event.data);
         
         if (data.type === 'mouse_click') {
-          // TOCAR 5 BEEPS quando detectar clique
           playClickSound();
-          
           setLastClick(data);
           setClickHistory(prev => [data, ...prev.slice(0, 9)]);
           setIsListening(false);
@@ -98,21 +102,28 @@ export default function MouseClickListener() {
 
       wsRef.current.onclose = () => {
         setIsConnected(false);
+        console.log('❌ WebSocket cliques desconectado, tentando reconectar...');
         setTimeout(connectWebSocket, 3000);
+      };
+
+      wsRef.current.onerror = (error) => {
+        console.error('❌ Erro WebSocket cliques:', error);
       };
     };
 
     // Conectar ao WebSocket de vídeo
     const connectVideoWebSocket = () => {
-      videoWsRef.current = new WebSocket('ws://localhost:3000/api/video');
+      const videoUrl = getWebSocketUrl('/api/video');
+      console.log('Conectando WebSocket vídeo:', videoUrl);
+      
+      videoWsRef.current = new WebSocket(videoUrl);
 
       videoWsRef.current.onopen = () => {
         setIsVideoConnected(true);
-        console.log('Conectado ao servidor WebSocket (vídeo)');
+        console.log('✅ Conectado ao servidor WebSocket (vídeo)');
       };
 
       videoWsRef.current.onmessage = (event) => {
-        // Receber frame de vídeo e desenhar no canvas
         const canvas = canvasRef.current;
         if (canvas) {
           const ctx = canvas.getContext('2d');
@@ -130,12 +141,20 @@ export default function MouseClickListener() {
 
       videoWsRef.current.onclose = () => {
         setIsVideoConnected(false);
+        console.log('❌ WebSocket vídeo desconectado, tentando reconectar...');
         setTimeout(connectVideoWebSocket, 3000);
+      };
+
+      videoWsRef.current.onerror = (error) => {
+        console.error('❌ Erro WebSocket vídeo:', error);
       };
     };
 
-    connectWebSocket();
-    connectVideoWebSocket();
+    // Aguardar carregamento da janela
+    if (typeof window !== 'undefined') {
+      connectWebSocket();
+      connectVideoWebSocket();
+    }
 
     return () => {
       if (wsRef.current) wsRef.current.close();
@@ -146,6 +165,17 @@ export default function MouseClickListener() {
   return (
     <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
       <h1>🐱 Monitor de Cliques + Live Feed da Webcam</h1>
+      
+      {/* Debug info */}
+      <div style={{ 
+        padding: '10px', 
+        backgroundColor: '#f0f0f0', 
+        borderRadius: '4px', 
+        marginBottom: '10px',
+        fontSize: '12px'
+      }}>
+        <strong>Debug:</strong> {typeof window !== 'undefined' ? `Conectando em: ${window.location.host}` : 'Carregando...'}
+      </div>
       
       {/* Controle de som */}
       <div style={{ 
